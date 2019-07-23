@@ -1,0 +1,5 @@
+name = Carga de Plantillas HTML
+description = Formulario para cargar Plantillas HTML para documentos de Contrato y Otros
+package = ONPE - Personal
+core = 7.x
+dependencies[] = plantillas

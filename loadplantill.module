@@ -1,0 +1,533 @@
+<?php
+
+/**
+* Implementa hook_menu para Formulario para subir loadplantill HTML de Contrato y XLS a enviar al Banco
+*/
+function loadplantill_menu(){
+  $items = array();
+  $items["loadplantill/form-loadplantill"] = array(
+    'title' => 'Formulario para subir HTML de Documentos',
+    'description' => 'Este es un formulario para ingresar loadplantill HTML',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('loadplantill_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    );
+
+    $items["loadplantill/form-loadimg"] = array(
+    'title' => 'Formulario para subir Imágenes de HTMLs',
+    'description' => 'Este es un formulario para ingresar imágenes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('loadimg_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    );
+
+      $items["loadplantill/form-loadimg/listview"] = array(
+    'title' => 'Lista de Imágenes guardadas',
+    'description' => 'Mire las imágenes',
+    'page callback' => 'loadimg_listview',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    );
+
+  $items["loadplantill/form-loadplantill/select"] = array(
+    'title' => 'Seleccione Plantillas HTML',
+    'description' => 'Plantillas HTML',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('selectplantill_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    );
+
+ return $items;
+}
+
+/**
+* Implementa Formulario para subir loadplantill de Contrato y XLS a enviar al Banco
+*/
+function loadplantill_form($form_state) {
+  checkdir_docusers();
+  checkdir_dochtml();
+
+  $form['template_name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Nombre de Plantilla HTML',
+    //'#description' => 'Escriba un nombre para la Plantilla',
+    '#size' => 50,
+    '#maxlength' => 80,
+    '#required' => TRUE,
+    );
+
+  $form["type"] = array(
+    '#type' => 'radios',
+    '#title' => 'Tipo de Plantilla HTML',
+    //'#description' => 'Segundo: Elija el tipo de plantilla',
+    '#options' => array(
+        '1' => 'Contrato',
+        '11' => 'Adenda',
+        '2' => 'Declaración Jurada',
+        '3' => 'Acuerdo de Confidencialidad',
+        '4' => 'Correo electrónico',
+        '5' => 'Principales Consideraciones',
+        '6' => 'Constancia de Servicios',
+        '7' => 'Constancia de Servicios General',
+        '8' => 'Carta de Invitación',
+        '9' => 'Carta de Aceptación',
+        '10' => 'Carta para Firma de Contrato',         
+      ),
+    '#required' => TRUE,
+    );
+
+  $form['file'] = array(
+    '#type' => 'file',
+    '#title' => 'Archivo',
+    '#description' => 'Suba sólo archivos HTML',
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Enviar',
+  );
+
+  return $form;
+}
+
+function loadplantill_form_validate($form, &$form_state) {
+
+  $dir_html = 'public://private/dochtml';
+
+  $file = file_save_upload('file', array('file_validate_extensions' => array('html')), $replace = FILE_EXISTS_RENAME);
+
+  // If the file passed validation:
+  if ($file) {
+    // Move the file into the Drupal file system.
+    if ($file = file_move($file, $dir_html)) {
+
+      // Save the file for use in the submit handler.
+      $form_state['storage']['file'] = $file;
+
+    } else {
+      form_set_error('file', 'Falló la subida del archivo al directorio '.$dir_html.'.');
+    }
+  }
+  else {
+    form_set_error('file', 'El archivo no fue subido. Suba un archivo html');
+  }
+}
+
+function loadplantill_form_submit($form, &$form_state){
+
+  $file = $form_state['storage']['file'];
+  // We are done with the file, remove it from storage.
+  unset($form_state['storage']['file']);
+  // Make the storage of the file permanent.
+  $file->status = FILE_STATUS_PERMANENT;
+  // Save file status.
+
+  file_save($file);
+  // Set a response to the user.
+  drupal_set_message(t('El archivo @filename ha sido subido.', array('@filename' => $file->filename)));
+
+  global $user;
+
+  $template_name = $form_state["values"]["template_name"];
+  $template_type = $form_state["values"]["type"];
+  $username = $user->name;
+  $usertime = $user->timestamp;
+  $number_fid = $file->fid;
+
+  $record = array(
+  	'state' =>'0',
+    'username' => $username,
+    'template_type' => $template_type,
+    'template_name' => $template_name,
+    'number_fid' => $number_fid,
+    'usertime' => $usertime,
+    );
+
+  if(drupal_write_record('loadplantill',$record)){
+    drupal_set_message('Plantilla guardada','status');
+  }else{
+    drupal_set_message('not inserted!', 'error');
+  }
+}
+
+/**
+* Lista de Plantillas Subidas
+*/
+
+/*function loadplantill_listview(){
+  $query = db_select('loadplantill', 'alias');
+  $results = $query->fields('alias')->orderBy('usertime', 'DESC')->execute();
+  //$header = array('Usuario', 'Tipo', 'Nombre', 'Fecha', 'Archivo' ,'Eliminar');
+  $header = array('Status','Usuario', 'Tipo', 'Nombre', 'Fecha');
+
+  $rows = array();
+  foreach ($results as $row) {
+
+    if ($row->template_type == '1'){
+      $type = 'Contrato';
+    } elseif ($row->template_type == '2'){
+      $type = 'Apertura de Cuentas Masivas';
+    }
+
+    $query2 = db_select('file_managed', 'alias2');
+    $results2 = $query2->condition('alias2.fid', $row->number_fid , '=')
+                    ->fields('alias2', array('uri'))
+                    ->execute();
+    $rows2 = array();
+
+      foreach ($results2 as $row2) {
+        $uri = file_create_url($row2->uri);
+        //$rows[] = array($row->username,$type, $row->template_name, date('d-m-Y H:i:s',$row->usertime), "<a href='{$uri}'>File</a>" , "<a href='listview/delete/{$row->number_fid}'>" . t('Delete') . "</a>",);
+        $rows[] = array($row->state,$row->username,$type, $row->template_name, date('d-m-Y H:i:s',$row->usertime),);
+    }
+  }
+
+  $output = theme('table', array('header' => $header,'rows' => $rows ));
+
+  return $output;
+  }*/
+
+/**
+* Formulario para seleccionar las plantillas a ser cargadas
+*/
+function selectplantill_form($form_state) {
+
+  $sql = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '1' ORDER BY state DESC,usertime DESC";
+  $result = db_query($sql);
+
+  $options_co = array();
+  foreach ($result as $row) {
+    $options_co[$row->number_fid] = $row->template_name.' | '.date('d-m-Y H:i:s',$row->usertime);
+  }
+
+  $sql11 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '11' ORDER BY state DESC,usertime DESC";
+  $result11 = db_query($sql11);
+
+  $options_ad = array();
+  foreach ($result11 as $row11) {
+    $options_ad[$row11->number_fid] = $row11->template_name.' | '.date('d-m-Y H:i:s',$row11->usertime);
+  }
+
+  $sql2 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '2' ORDER BY state DESC,usertime DESC";
+  $result2 = db_query($sql2);
+
+  $options_dj = array();
+  foreach ($result2 as $row2) {
+    $options_dj[$row2->number_fid] = $row2->template_name.' | '.date('d-m-Y H:i:s',$row2->usertime);
+  }
+
+  $sql3 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '3' ORDER BY state DESC,usertime DESC";
+  $result3 = db_query($sql3);
+
+  $options_ac = array();
+  foreach ($result3 as $row3) {
+    $options_ac[$row3->number_fid] = $row3->template_name.' | '.date('d-m-Y H:i:s',$row3->usertime);
+  }
+
+  $sql4 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '4' ORDER BY state DESC,usertime DESC";
+  $result4 = db_query($sql4);
+
+  $options_ce = array();
+  foreach ($result4 as $row4) {
+    $options_ce[$row4->number_fid] = $row4->template_name.' | '.date('d-m-Y H:i:s',$row4->usertime);
+  }
+
+  $sql5 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '5' ORDER BY state DESC,usertime DESC";
+  $result5 = db_query($sql5);
+
+  $options_pc = array();
+  foreach ($result5 as $row5) {
+    $options_pc[$row5->number_fid] = $row5->template_name.' | '.date('d-m-Y H:i:s',$row5->usertime);
+  }
+
+  $sql6 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '6' ORDER BY state DESC,usertime DESC";
+  $result6 = db_query($sql6);
+
+  $options_cs = array();
+  foreach ($result6 as $row6) {
+    $options_cs[$row6->number_fid] = $row6->template_name.' | '.date('d-m-Y H:i:s',$row6->usertime);
+  }
+
+  $sql7 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '7' ORDER BY state DESC,usertime DESC";
+  $result7 = db_query($sql7);
+
+  $options_cs_general = array();
+  foreach ($result7 as $row7) {
+    $options_cs_general[$row7->number_fid] = $row7->template_name.' | '.date('d-m-Y H:i:s',$row7->usertime);
+  }
+
+  $sql8 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '8' ORDER BY state DESC,usertime DESC";
+  $result8 = db_query($sql8);
+
+  $options_cinvita = array();
+  foreach ($result8 as $row8) {
+    $options_cinvita[$row8->number_fid] = $row8->template_name.' | '.date('d-m-Y H:i:s',$row8->usertime);
+  }
+
+  $sql9 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '9' ORDER BY state DESC,usertime DESC";
+  $result9 = db_query($sql9);
+
+  $options_cacepta = array();
+  foreach ($result9 as $row9) {
+    $options_cacepta[$row9->number_fid] = $row9->template_name.' | '.date('d-m-Y H:i:s',$row9->usertime);
+  }
+
+  $sql10 = "SELECT usertime, template_name, number_fid FROM {loadplantill} WHERE template_type = '10' ORDER BY state DESC,usertime DESC";
+  $result10 = db_query($sql10);
+
+  $options_cfirma = array();
+  foreach ($result10 as $row10) {
+    $options_cfirma[$row10->number_fid] = $row10->template_name.' | '.date('d-m-Y H:i:s',$row10->usertime);
+  }    
+
+    $form['co'] = array(
+      '#type' => 'select',
+      '#title' => 'Contrato',
+      '#description' => '*Escoja la plantilla de contrato',
+      '#options' => $options_co,
+    );
+
+    $form['ad'] = array(
+      '#type' => 'select',
+      '#title' => 'Adenda',
+      '#description' => '*Escoja la plantilla de adenda',
+      '#options' => $options_ad,
+    );
+
+    $form['dj'] = array(
+      '#type' => 'select',
+      '#title' => 'Declaración Jurada',
+      '#description' => '*Escoja la plantilla de Declaración Jurada',
+      '#options' => $options_dj,
+    );
+
+    $form['ac'] = array(
+      '#type' => 'select',
+      '#title' => 'Acuerdo de Confidencialidad',
+      '#description' => '*Escoja la plantilla de Acuerdo de Confidencialidad',
+      '#options' => $options_ac,
+    );
+
+    $form['ce'] = array(
+      '#type' => 'select',
+      '#title' => 'Correo electrónico',
+      '#description' => '*Escoja la plantilla de Correo electrónico',
+      '#options' => $options_ce,
+    );
+
+    $form['pc'] = array(
+      '#type' => 'select',
+      '#title' => 'Principales Consideraciones',
+      '#description' => '*Escoja la plantilla de Principales Consideraciones',
+      '#options' => $options_pc,
+    );
+
+    $form['cs'] = array(
+      '#type' => 'select',
+      '#title' => 'Constancia de Servicios',
+      '#description' => '*Escoja la plantilla de Constancia de Servicios',
+      '#options' => $options_cs,
+    );
+
+    $form['cs_general'] = array(
+      '#type' => 'select',
+      '#title' => 'Constancia de Servicios General',
+      '#description' => '*Escoja la plantilla de Constancia de Servicios General',
+      '#options' => $options_cs_general,
+    );
+
+    $form['cinvita'] = array(
+      '#type' => 'select',
+      '#title' => 'Carta de Invitación',
+      '#description' => '*Escoja la plantilla de Carta de Invitación',
+      '#options' => $options_cinvita,
+    );
+
+    $form['cacepta'] = array(
+      '#type' => 'select',
+      '#title' => 'Carta de Aceptación',
+      '#description' => '*Escoja la plantilla de Carta de Aceptación',
+      '#options' => $options_cacepta,
+    );
+
+    $form['cfirma'] = array(
+      '#type' => 'select',
+      '#title' => 'Carta para Firma de Contrato',
+      '#description' => '*Escoja la plantilla de Carta para Firma de Contrato',
+      '#options' => $options_cfirma,
+    );        
+
+    $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Enviar',
+  );
+
+return $form;
+  }
+
+/*function loadplantill_form_validate($form, &$form_state) {
+
+
+}*/
+
+function selectplantill_form_submit($form, &$form_state){
+
+// Poner a 0 el valor del campo state de todos los registros de la tabla
+$setcero_loadplantill = db_update('loadplantill')
+                      ->fields(array(
+                        'state' => '0',
+                        ))
+                      ->execute();
+
+//Poner en 1 el valor del campo state de los registros pasados por form_state.
+$setuno_loadplantill = db_update('loadplantill') // Table name no longer needs {}
+                      ->fields(array(
+                        'state' => '1',
+                        ))
+                      ->condition(db_or()
+                      ->condition('number_fid', $form_state['values']['co'])
+                      ->condition('number_fid', $form_state['values']['ad'])
+                      ->condition('number_fid', $form_state['values']['dj'])
+                      ->condition('number_fid', $form_state['values']['ac'])
+                      ->condition('number_fid', $form_state['values']['ce'])
+                      ->condition('number_fid', $form_state['values']['pc'])
+                      ->condition('number_fid', $form_state['values']['cs'])
+                      ->condition('number_fid', $form_state['values']['cs_general'])
+                      ->condition('number_fid', $form_state['values']['cinvita'])
+                      ->condition('number_fid', $form_state['values']['cacepta'])
+                      ->condition('number_fid', $form_state['values']['cfirma'])
+                       )
+                      ->execute();
+
+  if($setuno_loadplantill){
+    drupal_set_message('Se habilitaron las plantillas seleccionadas','status');
+  }else{
+    drupal_set_message('not inserted!', 'error');
+  }
+
+}
+
+function loadimg_form($form_state) {
+  checkdir_docusers();
+  checkdir_dochtml();
+
+  $form['img_name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Nombre de Imagen',
+    //'#description' => 'Escriba un nombre para la Imagen',
+    '#size' => 50,
+    '#maxlength' => 80,
+    '#required' => TRUE,
+    );
+
+  $form['file'] = array(
+    '#type' => 'file',
+    '#title' => 'Archivo',
+    '#description' => 'Suba sólo archivos de tipo png ó jpg',
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Enviar',
+  );
+
+  return $form;
+}
+
+function loadimg_form_validate($form, &$form_state) {
+
+  $dir_html = 'public://private/dochtml';
+
+  $file = file_save_upload('file', array('file_validate_extensions' => array('png jpg jpeg')), $replace = FILE_EXISTS_RENAME);
+
+  // If the file passed validation:
+  if ($file) {
+    // Move the file into the Drupal file system.
+    if ($file = file_move($file, $dir_html)) {
+
+      // Save the file for use in the submit handler.
+      $form_state['storage']['file'] = $file;
+
+    } else {
+      form_set_error('file', 'Falló la subida del archivo al directorio '.$dir_html.'.');
+    }
+  }
+  else {
+    form_set_error('file', 'El archivo no fue subido. Suba un archivo html');
+  }
+}
+
+function loadimg_form_submit($form, &$form_state){
+
+  $file = $form_state['storage']['file'];
+  // We are done with the file, remove it from storage.
+  unset($form_state['storage']['file']);
+  // Make the storage of the file permanent.
+  $file->status = FILE_STATUS_PERMANENT;
+  // Save file status.
+
+  file_save($file);
+  // Set a response to the user.
+  drupal_set_message(t('El archivo @filename ha sido subido.', array('@filename' => $file->filename)));
+
+  global $user;
+
+  $template_name = $form_state["values"]["img_name"];
+  $template_type = '0'; //0 es el tipo imagen
+  $username = $user->name;
+  $usertime = $user->timestamp;
+  $number_fid = $file->fid;
+
+  $record = array(
+    'state' =>'0',
+    'username' => $username,
+    'template_type' => $template_type,
+    'template_name' => $template_name,
+    'number_fid' => $number_fid,
+    'usertime' => $usertime,
+    );
+
+  if(drupal_write_record('loadplantill',$record)){
+    drupal_set_message('Imagen guardada','status');
+  }else{
+    drupal_set_message('not inserted!', 'error');
+  }
+}
+
+/**
+* Lista de Plantillas Subidas
+*/
+function loadimg_listview(){
+    // Cabecera de tabla
+  $header = array('Nombre de Archivo','Fecha', 'Ruta', 'File');
+
+  $query = db_select('loadplantill', 'alias');
+  $results = $query->fields('alias')->condition('alias.template_type', '0', '=')->orderBy('usertime', 'DESC')->execute();
+
+  $rows = array();
+  foreach ($results as $row) {
+
+    $query2 = db_select('file_managed', 'alias2');
+    $results2 = $query2->condition('alias2.fid', $row->number_fid , '=')
+                    ->fields('alias2', array('uri'))
+                    ->execute();
+    $rows2 = array();
+
+      foreach ($results2 as $row2) {
+        $uri = file_create_url($row2->uri);
+        global $base_url;
+        //$base_path = $base_url.base_path();
+        $base_path = $base_url;
+        // Ponemos el patrón que será reemplazado cuando se renderize el HTML
+        $path = str_replace($base_path,'_BASEPATH_',$uri);
+        $rows[] = array(array('data'=>$row->template_name, 'style'=>'font-size: 90%;'), array('data'=>date('d-m-Y H:i:s', $row->usertime),'style'=>'font-size: 80%;'), array('data'=>$path,'style'=>'font-size: 80%;'), "<a href='{$uri}'>File</a>");
+    }
+  }
+
+  $output = theme('table', array('header' => $header,'rows' => $rows ));
+
+  return $output;
+  }

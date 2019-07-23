@@ -1,0 +1,47 @@
+<?php
+
+function loadplantill_schema(){
+  $schema['loadplantill'] = array(
+      'description' => 'Table of Templates HTML',
+      'fields' => array(
+        'id' => array(
+          'description' => 'Template HTML id',
+          'type' => 'serial',
+          'not null' => TRUE,
+          ),
+        'state' => array(
+          'description' => 'Enabled or disabled.',
+          'type' => 'char',
+          'length' => '1',
+          'not null' => TRUE,
+          ),
+         'username' => array(
+            'description' => 'User name',
+            'type' => 'text',
+            'not null' => TRUE,
+          ),
+          'template_type' => array(
+            'description' => 'Type of Template HTML',
+            'type' => 'text',
+            'not null' => TRUE,
+          ),
+         'template_name' => array(
+            'description' => 'Name of Template HTML',
+            'type' => 'text',
+            'not null' => TRUE,
+          ),
+        'number_fid' => array(
+            'description' => 'Number fid of Template HTML in Table file_managed',
+            'type' => 'text',
+            'not null' => TRUE,
+          ),
+        'usertime' => array(
+            'description' => 'When the template was uploaded',
+            'type' => 'text',
+            'not null' => TRUE,
+          ),
+        ),
+      'primary key' => array('id'),
+    );
+  return $schema;
+}
